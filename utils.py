@@ -2,9 +2,63 @@ from datetime import datetime, timedelta
 
 import matplotlib.ticker as mtick
 import pandas as pd
+import requests
 from matplotlib import cm, colors
 from matplotlib import pyplot as plt
 
+def plot_prices(prices, sector):
+    idx = pd.IndexSlice
+    sector_prices = prices.loc[:, idx[sector, 'close']].droplevel(1, axis = 1)
+    sector_prices.plot(figsize=(16, 8))
+    
+def plot_returns(returns, sector):
+    idx = pd.IndexSlice
+    sector_returns = returns.loc[idx[sector, 'close'], :]
+    sector_returns.unstack(level=1).plot(kind='bar', subplots=True, rot=0, figsize=(25, 7), layout=(1, 4))
+
+def plot_tvl(ldata, sector):
+    ldata = ldata.set_index('symbol')
+    sector_names = ldata.loc[list(sector), 'name']
+
+    historic_tvl = pd.DataFrame()
+
+    for name in sector_names.values:
+        # Get TVL data
+        url = 'https://api.llama.fi/protocol/' + name.lower()
+        historic_tvl = historic_tvl.append(requests.get(url).json(), ignore_index = True)
+
+    historic_tvl_df = pd.DataFrame(historic_tvl)
+
+    name_chain_tvl = pd.DataFrame()
+    for row in range(4):
+        # Get name
+        name = historic_tvl_df.loc[row, 'name']
+
+        # Get chain data as dataframe
+        chain_tvls = historic_tvl_df.loc[row, 'chainTvls']
+
+        # Iterate over chains
+        for key in historic_tvl_df.loc[0, 'chainTvls']:
+            # Make column name
+            col_name = name + "_" + key
+
+            # Get TVL values as DF
+            tvl_df = pd.DataFrame(historic_tvl_df.loc[0, 'chainTvls'][key]['tvl'])
+
+            # Change name of column
+            tvl_df.rename(columns = {'totalLiquidityUSD': col_name}, inplace = True)
+
+            # Add tvl data under this name to name_chain_tvl
+            if name_chain_tvl.empty:
+                name_chain_tvl = tvl_df
+            else:
+                name_chain_tvl = name_chain_tvl.merge(tvl_df, how = 'left', left_on = 'date', right_on = 'date')
+
+    # Fix date format and set as index
+    name_chain_tvl['date'] = pd.to_datetime(name_chain_tvl['date'], unit = 's')
+    name_chain_tvl = name_chain_tvl.set_index('date')
+
+    name_chain_tvl.plot.area(figsize = (16, 8))
 
 def compute_cumulative_returns(asset_price_df, col_name):
     """
