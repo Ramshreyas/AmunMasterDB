@@ -101,51 +101,22 @@ def returns_df(asset_prices_df):
     asset_returns = pd.concat([seven_day_return, one_month_return, three_month_return, six_month_return], axis=1)
     return asset_returns
 
+def update(sector, start, end, cg, m):
+    # CoinGecko
+    cdata = pd.DataFrame(cg.get_coins_markets('usd'))
 
-def plot_sector_performance(asset_returns, sector_mapping):
-    """
-    Generated Hot Ball of Money monitor
-    @param asset_returns: pd.DataFrame
-        pandas dataframe with asset returns
-    @param sector_mapping: dict
-        Dictionary of asset:sector mapping
-    @return: matplotlib fig
-        figure containing Hot Ball of Money Monitor
-    """
-    # Construct color map from sector mapping
-    sectors = list(set(sector_mapping.values()))
-    cmap = cm.get_cmap('Spectral', len(sectors))
-    cmap = [colors.rgb2hex(cmap(i)) for i in range(cmap.N)]
-    color_mapping = {sector: color for sector, color in zip(sectors, cmap)}
+    # Messari
+    mdata = m.get_all_assets(asset_fields=['metrics'], to_dataframe=True)
+    prices = m.get_metric_timeseries(list(sector), 'price', start, end)
+    asset_returns = returns_df(prices)
 
-    asset_returns['sector'] = asset_returns.index.map(sector_mapping)
-    color_list = [color_mapping[i] for i in asset_returns['sector']]
-    fig = plt.figure(figsize=(30, 15))
-    handles = [plt.Rectangle((0, 0), 1, 1, color=color_mapping[sector]) for sector in sectors]
-    for col, i in zip(asset_returns.columns, range(1, len(asset_returns.columns))):
-        if col == 'sector':
-            continue
-        else:
-            ax = asset_returns[col].plot(kind='bar', ax=plt.subplot(int(str('24') + str(i))), color=color_list)
-            ax.set_title(col, fontsize=18)
-            ax.set_ylabel('Total Return (%)')
-            ax.yaxis.set_major_formatter(mtick.PercentFormatter())
-            plt.suptitle('Hot Ball of Money Monitor', size=40)
-            plt.figlegend(handles, sectors, loc='lower center', ncol=3, prop={'size': 16})
-    average_sector_returns = asset_returns.groupby('sector').mean()
-    average_sector_returns = average_sector_returns.reindex(list(asset_returns['sector'].unique()))
-    average_sector_returns.index = [x.replace(' ', '\n') for x in average_sector_returns.index]
-    for col, i in zip(average_sector_returns.columns, range(5, len(average_sector_returns.columns) + 5)):
-        tmp_df = average_sector_returns[col].to_frame(name=col)
-        tmp_df['positive'] = tmp_df[col] > 0
-        best_performing_sector = tmp_df[col].sort_values().index[-1]
-        tmp_df.loc[best_performing_sector, 'positive'] = 'Best'
-        ax = tmp_df[col].plot(kind='bar', ax=plt.subplot(int(str('24') + str(i))), rot=0, legend=False,
-                              color=tmp_df.positive.map({True: 'g', False: 'r', 'Best': '#D1B000'}))
-        split_col = col.split(' ')
-        ax.set_title(f'{split_col[0]} Average Sector {split_col[1]}', fontsize=18)
-        ax.set_ylabel('Total Return (%)')
-        ax.set_xlabel('')
-        ax.yaxis.set_major_formatter(mtick.PercentFormatter())
-    fig.savefig('hotballofmoney.png', dpi=300)
+    # DefiLLama
+    ldata = pd.DataFrame(requests.get('https://api.llama.fi/protocols').json())
+
+    ##### Coarse Merge
+    cdata['symbol'].str.lower()
+    master = cdata.merge(ldata, how = 'left', left_on = 'symbol', right_on = 'symbol')
+    master = master.merge(mdata, how = 'left', left_on = 'id_x', right_on = 'slug')
+    return (cdata, mdata, ldata, prices, asset_returns, master)
+
 
